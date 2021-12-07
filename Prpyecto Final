@@ -1,0 +1,106 @@
+Control de calidad con fastqc para el genoma de la base de datos de SRA sacados del NCBI
+SRR13443397
+
+What is the scientific name of your species? 
+  Influenza A virus (A/New York/392/2004(H3N2)
+
+How many samples have you find? 
+  8233
+
+Which sequencing platforms have been used for sequencing your species?
+  Platform
+  BGISEQ(8)
+  Capillary(3,005)
+  Illumina(4,241)
+  Ion Torrent(126)
+  LS454(839)
+  Oxford Nanopore(7)
+  PacBio SMRT(7)
+
+What is the SRR id of the run that you want to download?
+  SRR13443397
+  
+Size:102685
+Library:
+Name: 2.6_WGS_H1N1p_99_1_Mix2
+Instrument: Illumina MiSeq
+Strategy: WGS
+Source: GENOMIC
+Selection: RANDOM PCR
+Layout: PAIRED
+
+FASTQ-DUMP
+para poder bajar las secuencias de fastq de la especie de influenza virus
+
+```
+$ fastq-dump --split-3 SRR13443397
+$ ls
+$ SRR13443397_1.fastq SRR13443397_2.fastq
+````
+FASTQC
+para checar las calidades de estos archivos, y ver que tan contaminados o suscios están, lo hacemos con fastqcc
+
+```
+$ fastqc SRR13443397_1.fastq -o fastqcproyecto/
+$ fastqc SRR13443397_2.fastq -o fastqcproyecto/
+$ cd fastqcproyecto/
+$ ls
+$ SRR13443397_1_fastqc.html  SRR13443397_2_fastqc.html  SRR13443397_1_fastqc.zip   SRR13443397_2_fastqc.zip
+```
+Bajamos los archivos .html para checar las calidades
+
+FASTP
+filtrado para tener el archivo fastq más limpio. Filtramos con los parametros default de fastp. Como la librearia es pariada, serán 2 archivos
+
+```
+$ fastp -i  SRR13443397_1.fastq -I SRR13443397_2.fastq -o SRRfiltfastp_1.fastaq -O SRRfiltfasp_2.fastq >& fastp_SRR.log
+$ ls
+$ SRR13443397_1.fastq   SRRfiltfastp_1.fastaq    SRRfiltfastp_1.fastaq    SRRfiltfasp_2.fastq     fastp_SRR.log
+```
+
+MAPEO
+utilizamos bowtie2 para hacer el mapeo, para esto tenemos que estar en un enviromental para que pueda funcionar de acuerdo.
+```
+$ conda activate bowtie2
+```
+Creamos el índice del genoma de referencia
+```
+(bowtie2) $ bowtie2-build -f /home/npalomino/proyecto/genomaRef.fasta bowtie2_virus
+```
+Ahora mapeamos con nuestro reads a la referencia
+```
+(bowtie2) $bowtie2 -S SRR.sam -q --solexa1.3-quals -p 4 -I 100 -X 600 --fr -x  bowtie2_virus -1 SRRfiltfastp_1.fastq -2 SRRfiltfastp_2.fastq >& bowtie_SRR.log
+```
+Bajamos los archivos con la extensión de .sam de la rederencia de .fasta
+Luego hacemos filtrado con los archivos .sam eliminando las líneas de reads que no mapearon
+```
+(bowtie2) $ awk '$3!="*"' SRR.sam > SRRfilt.sam
+(bowtie2) $ conda deactivate
+```
+ENSAMBLE
+Ahora hacemos ensamble con Illumina fastq porque mis datos vienen de ahí, y para ello necesitamos activar el enviroment de spades
+
+```
+$ conda activate spades 
+(spades) $ spades.py -k 33,37,41 -t 1 -m 7 --pe1-1 SRR13443397_1.fastq --pe1-2 SRR13443397_2.fastq -o spades_pe50x
+$ conda deactivate 
+```
+QUAST
+Checamos la calidad del ensabmle con quast
+```
+$ cd spades_pe50x/
+$ ls
+$ quast --split-scaffolds -t 1 scaffolds.fasta
+```
+Luego hacemos quast con una referencia
+```
+$ quast.py --split-scaffolds -t 1 -r ../GCF_001343785.1_ViralMultiSegProj274766_genomic.fna scaffolds.fasta
+```
+Y los descargamos
+
+ANOTACIÖN
+Tomamos un pedazo de del ensmable y hacemos una anotación estructural con Augustus
+https://bioinf.uni-greifswald.de/augustus/augustus-result
+y hacemos otra anotación con el mismo pedazo del ensamble con Blast
+https://blast.ncbi.nlm.nih.gov/Blast.cgi
+
